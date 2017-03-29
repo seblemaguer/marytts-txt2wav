@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # HTTP + URL packages
-import httplib2
-from urllib.parse import urlencode, quote # For URL creation
+import json, requests
 
 # To play wave files
 import pygame
@@ -15,36 +14,45 @@ mary_host = "localhost"
 mary_port = "59125"
 
 # Input text
-input_text = "Mary python client test"
+input = "Mary python client test"
+
+# Configuration
+configuration = """
+# How to extract the input
+input_serializer=marytts.io.TextSerializer
+
+# How to render the output
+# output_serializer=marytts.io.HTSLabelSerializer
+# output_serializer=marytts.io.XMLSerializer
+output_serializer=marytts.io.ROOTSJSONSerializer
+
+# Current locale
+locale=en_US
+
+# List of modules
+modules=marytts.language.en.Preprocess \
+        marytts.language.en.JTokenizer \
+        marytts.modules.nlp.OpenNLPPosTagger \
+        marytts.modules.nlp.JPhonemiser \
+        marytts.language.en.Prosody \
+        marytts.modules.nlp.PronunciationModel \
+        marytts.modules.acoustic.TargetFeatureLister
+"""
 
 # Build the query
-query_hash = {"INPUT_TEXT":input_text,
-              "INPUT_TYPE":"TEXT", # Input text
-              "LOCALE":"en_US",
-              "VOICE":"cmu-slt-hsmm", # Voice informations  (need to be compatible)
-              "OUTPUT_TYPE":"AUDIO",
-              "AUDIO":"WAVE", # Audio informations (need both)
-              }
-query = urlencode(query_hash)
-print("query = \"http://%s:%s/process?%s\"" % (mary_host, mary_port, query))
+query = {"input":"input","configuration":configuration}
 
 # Run the query to mary http server
-h_mary = httplib2.Http()
-resp, content = h_mary.request("http://%s:%s/process?" % (mary_host, mary_port), "POST", query)
+headers = {"Content-type": "application/x-www-form-urlencoded"} # FIXME: mandatory but why ?
+r = requests.post("http://%s:%s/process/" % (mary_host, mary_port),
+                      headers = headers,
+                      data = query)
 
-#  Decode the wav file or raise an exception if no wav files
-if (resp["content-type"] == "audio/x-wav"):
-
-    # Write the wav file
-    f = open("/tmp/output_wav.wav", "wb")
-    f.write(content)
-    f.close()
-
-    # Play the wav file
-    pygame.mixer.init(frequency=16000) # Initialise the mixer
-    s = pygame.mixer.Sound("/tmp/output_wav.wav")
-    s.play()
-    pygame.time.wait(int(math.ceil(s.get_length() * 1000)))
+r = r.json()
+if (r["exception"] is not None):
+    print("cause: %s" % r["exception"]["embeddedException"]["cause"])
+    for line in r["exception"]["embeddedException"]["stackTrace"]:
+        print("\t%s:%s (%s.%s)" % (line["fileName"], line["lineNumber"], line["className"], line["methodName"]))
 
 else:
-    raise Exception(content)
+    print(r["result"])
